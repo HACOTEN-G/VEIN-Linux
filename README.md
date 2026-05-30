@@ -45,15 +45,15 @@ git clone https://github.com/HACOTEN-G/VEIN-Linux.git
 ```
 
 ```bash
+sudo chmod -R 777 /root/git/VEIN-Linux
+```
+
+```bash
 cd VEIN-Linux/
 ```
 
 ```bash
-chmod 744 server-install-ubuntu20.sh
-```
-
-```bash
-sudo ./server-install-ubuntu20.sh
+sudo ./setup-vein-server.sh
 ```
 
 ---
