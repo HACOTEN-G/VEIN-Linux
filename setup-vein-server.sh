@@ -66,6 +66,33 @@ else
 fi
 
 # ============================================================
+# apt ロック解除 (unattended-upgrades 対策)
+# ============================================================
+echo "自動アップデートを停止し、apt ロックを解除します..."
+
+systemctl stop unattended-upgrades 2>/dev/null || true
+systemctl disable unattended-upgrades 2>/dev/null || true
+
+# ロックが解放されるまで待機 (最大180秒)
+LOCK_WAIT=0
+while fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock \
+    >/dev/null 2>&1; do
+  if [ "$LOCK_WAIT" -ge 180 ]; then
+    echo "apt ロックを強制解除します..."
+    rm -f /var/lib/dpkg/lock-frontend
+    rm -f /var/lib/dpkg/lock
+    rm -f /var/cache/apt/archives/lock
+    dpkg --configure -a
+    break
+  fi
+  echo "apt ロック待機中... (${LOCK_WAIT}秒)"
+  sleep 5
+  LOCK_WAIT=$((LOCK_WAIT + 5))
+done
+
+echo "apt ロック解除完了。"
+
+# ============================================================
 # 必要パッケージのインストール
 # ============================================================
 dpkg --add-architecture i386
