@@ -2,7 +2,7 @@
 #
 # VEIN Dedicated Server Setup Script
 # Ubuntu 22.04 / 24.04 向け (ConoHa VPS等)
-# SteamCMD + Proton GE を使用してWindowsバイナリを実行します
+# VEINはLinuxネイティブバイナリのため、Proton不要
 #
 # 使用ポート (ConoHaコンソールで開放してください):
 #   UDP 7777  - ゲームポート
@@ -25,9 +25,6 @@ fi
 # ============================================================
 APP_ID=2131400
 VEIN_INSTALL_SUBDIR="vein_server"    # steam ホーム内のインストール先サブディレクトリ名
-PROTON_URL="https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton9-20/GE-Proton9-20.tar.gz"
-PROTON_TGZ="$(basename "$PROTON_URL")"
-PROTON_NAME="$(basename "$PROTON_TGZ" ".tar.gz")"
 MAX_RETRIES=3
 RETRY_DELAY=15
 LOG_FILE="/tmp/steamcmd_vein_install.log"
@@ -69,11 +66,6 @@ else
 fi
 
 # ============================================================
-# 作業ディレクトリ
-# ============================================================
-[ -d /opt/game-resources ] || mkdir -p /opt/game-resources
-
-# ============================================================
 # 必要パッケージのインストール
 # ============================================================
 dpkg --add-architecture i386
@@ -100,16 +92,6 @@ http://repo.steampowered.com/steam/ stable steam" \
 
 apt update
 apt install -y steamcmd
-
-# ============================================================
-# Proton GE のダウンロード
-# ============================================================
-if [ ! -f "/opt/game-resources/$PROTON_TGZ" ]; then
-  echo "Proton GE をダウンロードします: $PROTON_URL"
-  wget "$PROTON_URL" -O "/opt/game-resources/$PROTON_TGZ"
-else
-  echo "Proton GE は既にダウンロード済みです。スキップします。"
-fi
 
 # ============================================================
 # steam ユーザーの作成
@@ -152,10 +134,10 @@ done
 # ============================================================
 # Steam ディレクトリの検出
 # ============================================================
-if [ -d "/home/steam/Steam" ]; then
-  STEAMDIR="/home/steam/Steam"
-elif [ -d "/home/steam/.local/share/Steam" ]; then
+if [ -d "/home/steam/.local/share/Steam" ]; then
   STEAMDIR="/home/steam/.local/share/Steam"
+elif [ -d "/home/steam/Steam" ]; then
+  STEAMDIR="/home/steam/Steam"
 elif [ -d "/home/steam/.steam/steam" ]; then
   STEAMDIR="/home/steam/.steam/steam"
 else
@@ -163,23 +145,13 @@ else
   exit 1
 fi
 
-if [ -d "$STEAMDIR/steamapps" ]; then
-  STEAMAPPSDIR="$STEAMDIR/steamapps"
-elif [ -d "$STEAMDIR/SteamApps" ]; then
-  STEAMAPPSDIR="$STEAMDIR/SteamApps"
-else
-  echo "ERROR: SteamApps ディレクトリが見つかりません。" >&2
-  exit 1
-fi
-
 echo "Steam ディレクトリ: $STEAMDIR"
-echo "SteamApps ディレクトリ: $STEAMAPPSDIR"
 
 # ============================================================
 # VEIN インストールディレクトリの確認
 # ============================================================
 VEIN_ROOT="/home/steam/$VEIN_INSTALL_SUBDIR"
-VEIN_CONFIG_DIR="$VEIN_ROOT/Vein/Saved/Config/WindowsServer"
+VEIN_CONFIG_DIR="$VEIN_ROOT/Vein/Saved/Config/LinuxServer"
 VEIN_LOG_DIR="$VEIN_ROOT/Vein/Saved/Logs"
 
 if [ ! -d "$VEIN_ROOT" ]; then
@@ -190,34 +162,26 @@ fi
 echo "VEIN インストールディレクトリ: $VEIN_ROOT"
 
 # ============================================================
-# Proton GE のインストール
+# steamclient.so シンボリックリンクの作成 (Steam API 初期化に必要)
 # ============================================================
-[ -d "$STEAMDIR/compatibilitytools.d" ] || \
-  sudo -u steam mkdir -p "$STEAMDIR/compatibilitytools.d"
+sudo -u steam mkdir -p /home/steam/.steam/sdk32
+sudo -u steam mkdir -p /home/steam/.steam/sdk64
 
-if [ ! -d "$STEAMDIR/compatibilitytools.d/$PROTON_NAME" ]; then
-  echo "Proton GE を展開します..."
-  sudo -u steam tar -x \
-    -C "$STEAMDIR/compatibilitytools.d/" \
-    -f "/opt/game-resources/$PROTON_TGZ"
-  echo "Proton GE のインストール完了。"
-else
-  echo "Proton GE は既にインストール済みです。スキップします。"
+STEAMCMD_DIR="$STEAMDIR/steamcmd"
+
+if [ -f "$STEAMCMD_DIR/linux32/steamclient.so" ]; then
+  [ -e /home/steam/.steam/sdk32/steamclient.so ] || \
+    sudo -u steam ln -s "$STEAMCMD_DIR/linux32/steamclient.so" \
+      /home/steam/.steam/sdk32/steamclient.so
 fi
 
-# ============================================================
-# compatdata のセットアップ
-# ============================================================
-[ -d "$STEAMAPPSDIR/compatdata" ] || \
-  sudo -u steam mkdir -p "$STEAMAPPSDIR/compatdata"
-
-if [ ! -d "$STEAMAPPSDIR/compatdata/$APP_ID" ]; then
-  echo "compatdata をセットアップします..."
-  sudo -u steam cp \
-    "$STEAMDIR/compatibilitytools.d/$PROTON_NAME/files/share/default_pfx" \
-    "$STEAMAPPSDIR/compatdata/$APP_ID" -r
-  echo "compatdata のセットアップ完了。"
+if [ -f "$STEAMCMD_DIR/linux64/steamclient.so" ]; then
+  [ -e /home/steam/.steam/sdk64/steamclient.so ] || \
+    sudo -u steam ln -s "$STEAMCMD_DIR/linux64/steamclient.so" \
+      /home/steam/.steam/sdk64/steamclient.so
 fi
+
+echo "steamclient.so シンボリックリンクを作成しました。"
 
 # ============================================================
 # Game.ini の初期作成
@@ -231,10 +195,10 @@ if [ ! -f "$GAMEINI_PATH" ]; then
   echo "Game.ini を作成します..."
 
   sudo -u steam tee "$GAMEINI_PATH" > /dev/null <<'GAMEINI'
-[/script/engine.gamesession]
+[/Script/Engine.GameSession]
 MaxPlayers=8
 
-[/script/vein.veingamesession]
+[/Script/Vein.VeinGameSession]
 ServerName="My VEIN Server"
 Password=""
 GAMEINI
@@ -251,8 +215,6 @@ fi
 # ============================================================
 # systemd サービスの作成
 # ============================================================
-STEAM_UID=$(id -u steam)
-
 cat > /etc/systemd/system/vein-server.service <<EOF
 [Unit]
 Description=VEIN Dedicated Server
@@ -264,10 +226,7 @@ LimitNOFILE=10000
 User=steam
 Group=steam
 WorkingDirectory=$VEIN_ROOT
-Environment=XDG_RUNTIME_DIR=/run/user/${STEAM_UID}
-Environment="STEAM_COMPAT_CLIENT_INSTALL_PATH=$STEAMDIR"
-Environment="STEAM_COMPAT_DATA_PATH=$STEAMAPPSDIR/compatdata/$APP_ID"
-ExecStart=$STEAMDIR/compatibilitytools.d/$PROTON_NAME/proton run VeinServer.exe -log
+ExecStart=$VEIN_ROOT/VeinServer.sh -log
 Restart=on-failure
 RestartSec=20s
 
